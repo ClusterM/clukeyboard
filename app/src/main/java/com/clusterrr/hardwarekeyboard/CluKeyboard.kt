@@ -12,7 +12,7 @@ import java.util.ArrayList
 import android.provider.Settings
 import java.lang.Exception
 
-class Keyboard : InputMethodService(), View.OnClickListener, CompoundButton.OnCheckedChangeListener {
+class CluKeyboard : InputMethodService(), View.OnClickListener, CompoundButton.OnCheckedChangeListener {
     // Keys mappings
     private val mapping = RussianMappings()
 
