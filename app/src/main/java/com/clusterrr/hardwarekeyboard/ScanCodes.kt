@@ -183,7 +183,6 @@ object ScanCodes {
      * Scan code constant: Numeric keypad Enter key.
      */
     val SCANCODE_NUMPAD_ENTER = 96
-
     /**
      * Scan code constant: Menu key.
      */

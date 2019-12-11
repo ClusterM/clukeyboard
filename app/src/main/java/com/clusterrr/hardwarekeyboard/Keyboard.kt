@@ -13,23 +13,13 @@ import android.provider.Settings
 import java.lang.Exception
 
 class Keyboard : InputMethodService(), View.OnClickListener, CompoundButton.OnCheckedChangeListener {
-    private val FN_KEY = ScanCodes.SCANCODE_SHOW_KEYBOARD
-    private val LANGUAGE_KEYS = arrayOf(
-            intArrayOf(ScanCodes.SCANCODE_LANGUAGE),
-            intArrayOf(ScanCodes.SCANCODE_SHIFT_LEFT, ScanCodes.SCANCODE_CTRL_LEFT)
-    )
-    private val FN_FIX_KEYS = arrayOf(
-            intArrayOf(ScanCodes.SCANCODE_SHOW_KEYBOARD, ScanCodes.SCANCODE_SPACE)
-    )
-    private val SHOW_HIDE_KEYS = arrayOf(intArrayOf(ScanCodes.SCANCODE_SHOW_KEYBOARD, ScanCodes.SCANCODE_TAB))
-    private val BRIGHTNESS_DOWN_KEYS = arrayOf(intArrayOf(ScanCodes.SCANCODE_SHOW_KEYBOARD, ScanCodes.SCANCODE_J))
-    private val BRIGHTNESS_UP_KEYS = arrayOf(intArrayOf(ScanCodes.SCANCODE_SHOW_KEYBOARD, ScanCodes.SCANCODE_K))
-    private val SCANCODE_ONLY_APPS = arrayOf("com.microsoft.rdc.android")
+    // Keys mappings
+    private val mapping = RussianMappings()
 
     private var altLanguage = false
     private var fnLock = false
-    private val keysPressed = ArrayList<Int>()
     private var capsLock = false
+    private val keysPressed = ArrayList<Int>()
 
     internal var textViewLanguage: TextView? = null
     internal var switchCapsLock: Switch? = null
@@ -58,16 +48,18 @@ class Keyboard : InputMethodService(), View.OnClickListener, CompoundButton.OnCh
         if (!altLanguage)
             languageName = "EN"
         else
-            languageName = "RU"
+            languageName = mapping.ALT_LANGUAGE_NAME
         if (textViewLanguage != null)
             textViewLanguage!!.text = languageName
         return languageName
     }
 
     fun toggleLanguage() {
-        altLanguage = !altLanguage
-        val languageName = updateLangage()
-        Toast.makeText(this, languageName, Toast.LENGTH_SHORT).show()
+        if (mapping.ALT_LANGUAGE_NAME != null) {
+            altLanguage = !altLanguage
+            val languageName = updateLangage()
+            Toast.makeText(this, languageName, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun updateFnFixSwitch() {
@@ -83,10 +75,10 @@ class Keyboard : InputMethodService(), View.OnClickListener, CompoundButton.OnCh
     fun toggleFnLock() {
         if (!fnLock) {
             fnLock = true
-            Toast.makeText(this, "FN lock: on", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "FN Lock: on", Toast.LENGTH_SHORT).show()
         } else {
             fnLock = false
-            Toast.makeText(this, "FN lock: off", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "FN Lock: off", Toast.LENGTH_SHORT).show()
         }
         updateFnFixSwitch()
     }
@@ -100,7 +92,7 @@ class Keyboard : InputMethodService(), View.OnClickListener, CompoundButton.OnCh
 
     private fun shouldUseScanCodes(): Boolean {
         val packageName = currentInputEditorInfo.packageName
-        return packageName in SCANCODE_ONLY_APPS
+        return packageName in mapping.SCANCODE_ONLY_APPS
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
@@ -143,53 +135,57 @@ class Keyboard : InputMethodService(), View.OnClickListener, CompoundButton.OnCh
         updateCapsLockSwitch()
 
         // Toggle language
-        if (!shouldUseScanCodes() && checkCombinations(LANGUAGE_KEYS, scanCode)) {
+        if (!shouldUseScanCodes() && checkCombinations(mapping.LANGUAGE_KEYS, scanCode)) {
             keysPressed.add(scanCode) // do not repeat
             toggleLanguage()
             return true
         }
 
         // Toggle FN fix
-        if (checkCombinations(FN_FIX_KEYS, scanCode)) {
+        if (checkCombinations(mapping.FN_LOCK_KEYS, scanCode)) {
             keysPressed.add(scanCode) // do not repeat
             toggleFnLock()
             return true
         }
 
         // Toggle GUI
-        if (checkCombinations(SHOW_HIDE_KEYS, scanCode)) {
+        if (checkCombinations(mapping.SHOW_HIDE_KEYS, scanCode)) {
             keysPressed.add(scanCode) // do not repeat
             toggleVisibility()
             return true
         }
 
-        if (checkCombinations(BRIGHTNESS_DOWN_KEYS, scanCode)) {
+        // Brightness down
+        if (checkCombinations(mapping.BRIGHTNESS_DOWN_KEYS, scanCode)) {
             adjustBrightness(-5)
             return true
         }
 
-        if (checkCombinations(BRIGHTNESS_UP_KEYS, scanCode)) {
+        // Brightness up
+        if (checkCombinations(mapping.BRIGHTNESS_UP_KEYS, scanCode)) {
             adjustBrightness(5)
             return true
         }
 
+        // Add scancode to list of current keys
         if (!keysPressed.contains(scanCode)) {
             keysPressed.add(scanCode)
         }
 
-        if (scanCode == FN_KEY) {
+        // Ignore further actions for FN key
+        if (scanCode == mapping.FN_KEY) {
             return true
         }
 
         // Get mapping for key
-        val key = mapping.getMapping(scanCode)
+        val key = mapping.getKeyMapping(scanCode)
         if (key != null) {
 
             // Is the FN key hold?
-            if (keysPressed.contains(FN_KEY) xor (fnLock && key.AlternateFix)) {
+            if (keysPressed.contains(mapping.FN_KEY) xor (fnLock && key.FnFixSupport)) {
                 // Does key has some FN-function?
-                if (key.AlternateScanCode != 0 || key.AlternateKeyCode != 0) {
-                    sendKeyCode(event, key.AlternateKeyCode, key.AlternateScanCode)
+                if (key.FnScanCode != 0 || key.FnKeyCode != 0) {
+                    sendKeyCode(event, key.FnKeyCode, key.FnScanCode)
                     return true
                 }
             }
@@ -203,12 +199,12 @@ class Keyboard : InputMethodService(), View.OnClickListener, CompoundButton.OnCh
             // Is it alternative language?
             if (!shouldUseScanCodes() // Workaround for some apps: send scancode only
                     && altLanguage && !event.isAltPressed && !event.isCtrlPressed) {
-                val shift = event.isShiftPressed xor (event.isCapsLockOn && !key.IgnoreCapsLock)
+                val shift = event.isShiftPressed xor (event.isCapsLockOn && !key.AltLanguageIgnoreCapsLock)
                 var text: String? = null
                 if (!shift)
-                    text = key.Char
+                    text = key.AltLanguageChar
                 else
-                    text = key.ShiftChar
+                    text = key.AltLanguageShiftChar
                 // Send keypresses as text
                 if (text != null) {
                     sendText(text)
@@ -247,16 +243,16 @@ class Keyboard : InputMethodService(), View.OnClickListener, CompoundButton.OnCh
         if (keysPressed.contains(scanCode))
             keysPressed.remove(scanCode)
 
-        if (scanCode == FN_KEY) {
+        if (scanCode == mapping.FN_KEY) {
             return true
         }
 
-        val key = mapping.getMapping(scanCode)
+        val key = mapping.getKeyMapping(scanCode)
         if (key != null) {
 
-            if (keysPressed.contains(FN_KEY) || fnLock && key.AlternateFix) {
-                if (key.AlternateScanCode != 0 || key.AlternateKeyCode != 0) {
-                    sendKeyCode(event, key.AlternateKeyCode, key.AlternateScanCode)
+            if (keysPressed.contains(mapping.FN_KEY) || fnLock && key.FnFixSupport) {
+                if (key.FnScanCode != 0 || key.FnKeyCode != 0) {
+                    sendKeyCode(event, key.FnKeyCode, key.FnScanCode)
                     return true
                 }
             }
@@ -272,12 +268,12 @@ class Keyboard : InputMethodService(), View.OnClickListener, CompoundButton.OnCh
             }
 
             if (altLanguage && !event.isAltPressed && !event.isCtrlPressed) {
-                val shift = event.isShiftPressed xor (event.isCapsLockOn && !key.IgnoreCapsLock)
+                val shift = event.isShiftPressed xor (event.isCapsLockOn && !key.AltLanguageIgnoreCapsLock)
                 var text: String? = null
                 if (!shift)
-                    text = key.Char
+                    text = key.AltLanguageChar
                 else
-                    text = key.ShiftChar
+                    text = key.AltLanguageShiftChar
                 if (text != null) {
                     //sendText(text);
                     return true
@@ -377,9 +373,5 @@ class Keyboard : InputMethodService(), View.OnClickListener, CompoundButton.OnCh
         catch (ex: Exception) {
             ex.printStackTrace()
         }
-    }
-
-    companion object {
-        private val mapping = RusMapping()
     }
 }
