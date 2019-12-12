@@ -357,9 +357,9 @@ class CluKeyboard : InputMethodService(), View.OnClickListener, CompoundButton.O
         updateInputViewShown()
         val current = isInputViewShown
         if (!current)
-            requestShowSelf(0)
+            showWindow(true)
         else
-            requestHideSelf(0)
+            hideWindow()
     }
 
     private fun adjustBrightness(delta: Int) {
